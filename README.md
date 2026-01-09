@@ -30,7 +30,19 @@ A Python script to scrape NBA player statistics from [Basketball-Reference.com](
    cd NBA_Database/NBA_Code
    ```
 
-2. **Install dependencies**:
+2. **Create and activate a virtual environment** (recommended):
+   ```bash
+   # Create virtual environment
+   python -m venv venv
+   
+   # Activate virtual environment
+   # On Windows:
+   venv\Scripts\activate
+   # On macOS/Linux:
+   source venv/bin/activate
+   ```
+
+3. **Install dependencies**:
    ```bash
    pip install -r requirements.txt
    ```
@@ -40,6 +52,7 @@ A Python script to scrape NBA player statistics from [Basketball-Reference.com](
    - `requests` - for HTTP requests
    - `beautifulsoup4` - for HTML parsing
    - `lxml` - for HTML parsing support
+   - `html5lib` - for HTML parsing support
 
 ## Usage
 
@@ -70,23 +83,25 @@ Enter year(s) to scrape (e.g., 2025 or 2024 2025):
 
 ## Output Structure
 
-The script creates year-based folders and saves CSV files for each stat type:
+The script creates year-based folders in a `data` directory and saves CSV files for each stat type:
 
 ```
 NBA_Code/
 ├── scrape_nba_stats.py
 ├── requirements.txt
 ├── README.md
-└── [year folders created at runtime]
-    └── 2025/
-        ├── totals.csv
-        ├── per_game.csv
-        ├── per_minute.csv
-        ├── per_poss.csv
-        ├── advanced.csv
-        ├── play_by_play.csv
-        ├── shooting.csv
-        └── adj_shooting.csv
+├── venv/                    # Virtual environment (not tracked in git)
+└── data/                    # Data folder (created at runtime)
+    └── [year folders created at runtime]
+        └── 2025/
+            ├── totals.csv
+            ├── per_game.csv
+            ├── per_minute.csv
+            ├── per_poss.csv
+            ├── advanced.csv
+            ├── play_by_play.csv
+            ├── shooting.csv
+            └── adj_shooting.csv
 ```
 
 ### CSV File Format
@@ -109,14 +124,14 @@ Output:
 ```
 Scraping NBA 2025 season stats...
 ==================================================
-Scraping totals... Saved 2025/totals.csv (219 rows)
-Scraping per_game... Saved 2025/per_game.csv (219 rows)
-Scraping per_minute... Saved 2025/per_minute.csv (219 rows)
-Scraping per_poss... Saved 2025/per_poss.csv (219 rows)
-Scraping advanced... Saved 2025/advanced.csv (219 rows)
-Scraping play-by-play... Saved 2025/play_by_play.csv (219 rows)
-Scraping shooting... Saved 2025/shooting.csv (219 rows)
-Scraping adj_shooting... Saved 2025/adj_shooting.csv (219 rows)
+Scraping totals... Saved data/2025/totals.csv (735 rows)
+Scraping per_game... Saved data/2025/per_game.csv (735 rows)
+Scraping per_minute... Saved data/2025/per_minute.csv (735 rows)
+Scraping per_poss... Saved data/2025/per_poss.csv (735 rows)
+Scraping advanced... Saved data/2025/advanced.csv (735 rows)
+Scraping play-by-play... Saved data/2025/play_by_play.csv (735 rows)
+Scraping shooting... Saved data/2025/shooting.csv (735 rows)
+Scraping adj_shooting... Saved data/2025/adj_shooting.csv (735 rows)
 ==================================================
 Completed: 8/8 stat types scraped successfully for 2025
 ```

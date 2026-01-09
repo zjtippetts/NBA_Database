@@ -38,6 +38,6 @@ ENV/
 Thumbs.db
 
 # Data folders (uncomment if you don't want to track CSV files)
-# [0-9]*/
+# data/
 # *.csv
 

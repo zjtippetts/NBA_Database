@@ -9,6 +9,8 @@ import sys
 import re
 import time
 import argparse
+import gzip
+import urllib.request
 from typing import List, Optional
 import requests
 import pandas as pd
@@ -50,9 +52,73 @@ def extract_player_id(url: str) -> Optional[str]:
     return None
 
 
+# Create a session to maintain cookies and appear more browser-like
+_session = None
+
+def get_session():
+    """Get or create a requests session with browser-like headers."""
+    global _session
+    if _session is None:
+        _session = requests.Session()
+        _session.headers.update({
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.9',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Cache-Control': 'max-age=0',
+        })
+    return _session
+
+
+def get_headers():
+    """Get headers dictionary for urllib requests."""
+    return {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1',
+        'Sec-Fetch-Dest': 'document',
+        'Sec-Fetch-Mode': 'navigate',
+        'Sec-Fetch-Site': 'none',
+        'Cache-Control': 'max-age=0',
+    }
+
+
+def fetch_html_with_fallback(url: str) -> Optional[str]:
+    """Fetch HTML using requests, with urllib fallback if requests fails."""
+    # Try requests first
+    try:
+        session = get_session()
+        response = session.get(url, timeout=30)
+        response.raise_for_status()
+        return response.text
+    except requests.exceptions.RequestException:
+        # Fallback to urllib (sometimes works when requests is blocked)
+        try:
+            req = urllib.request.Request(url, headers=get_headers())
+            with urllib.request.urlopen(req, timeout=30) as response:
+                data = response.read()
+                # Check if content is gzipped
+                if data[:2] == b'\x1f\x8b':  # Gzip magic number
+                    return gzip.decompress(data).decode('utf-8')
+                else:
+                    return data.decode('utf-8')
+        except Exception as e:
+            print(f"urllib fallback also failed: {e}")
+            return None
+
+
 def scrape_stat_table(year: int, stat_type: str) -> Optional[pd.DataFrame]:
     """
     Scrape a single stat table for a given year from Basketball-Reference.
+    Uses pandas.read_html() directly on URL for table parsing.
     
     Args:
         year: NBA season year (e.g., 2025 for 2024-25 season)
@@ -65,45 +131,92 @@ def scrape_stat_table(year: int, stat_type: str) -> Optional[pd.DataFrame]:
     url = f"https://www.basketball-reference.com/leagues/NBA_{year}_{stat_type}.html"
     
     try:
-        # Fetch the page
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-        }
-        response = requests.get(url, headers=headers, timeout=30)
-        response.raise_for_status()
+        # Try using pandas.read_html() directly on the URL first
+        # This is simpler and pandas handles the HTTP request internally
+        dfs = None
+        html_content = None
         
-        # Polite delay to avoid rate limiting (3 seconds between requests)
-        # Sports Reference limit: 20 requests per minute (60/20 = 3 seconds)
-        time.sleep(3)
+        try:
+            dfs = pd.read_html(url, attrs={'id': stat_type})
+            # If successful, try to get HTML for player ID extraction
+            html_content = fetch_html_with_fallback(url)
+        except (ValueError, Exception) as e:
+            # pandas.read_html() failed - try fallback method
+            pass
         
-        # Parse HTML with BeautifulSoup to extract player links
-        soup = BeautifulSoup(response.content, 'html.parser')
+        if not dfs:
+            try:
+                # Try without specifying table ID
+                dfs = pd.read_html(url)
+                if dfs:
+                    html_content = fetch_html_with_fallback(url)
+            except (ValueError, Exception) as e:
+                # Still failed - use fallback method
+                pass
         
-        # Find the stats table
-        table = soup.find('table', {'id': stat_type})
-        if not table:
-            # Try alternative table ID or class
-            table = soup.find('table', class_='sortable')
-            if not table:
-                print(f"Warning: Could not find table for {stat_type} in {year}")
+        # If pandas.read_html() didn't work, use our fallback approach
+        if not dfs:
+            # Fetch HTML using fallback method (requests -> urllib)
+            html_content = fetch_html_with_fallback(url)
+            
+            if not html_content:
+                print(f"Could not fetch HTML")
                 return None
+            
+            # Parse HTML with BeautifulSoup
+            soup = BeautifulSoup(html_content, 'html.parser')
+            table = soup.find('table', {'id': stat_type})
+            if not table:
+                table = soup.find('table', class_='sortable')
+            
+            if not table:
+                print(f"Could not find table")
+                return None
+            
+            # Parse table with pandas from HTML string
+            dfs = pd.read_html(str(table))
         
-        # First, extract player IDs from HTML rows
+        if not dfs:
+            print(f"Could not parse table")
+            return None
+        
+        df = dfs[0]
+        
+        # Get HTML for player ID extraction if we don't have it yet
+        if html_content is None:
+            html_content = fetch_html_with_fallback(url)
+        
+        if html_content:
+            soup = BeautifulSoup(html_content, 'html.parser')
+        else:
+            print(f"Warning: Could not fetch HTML for player ID extraction")
+            soup = None
+        
+        # Find the stats table to extract player links
+        if soup:
+            table = soup.find('table', {'id': stat_type})
+            if not table:
+                table = soup.find('table', class_='sortable')
+        else:
+            table = None
+        
+        if not table:
+            print(f"Warning: Could not find table HTML for player ID extraction")
+            # Continue without player IDs - user can add them manually
+            return df
+        
+        # Extract player IDs from HTML rows
         player_ids = []
         tbody = table.find('tbody')
         if tbody:
             rows = tbody.find_all('tr')
         else:
-            # If no tbody, get all rows and skip header
             all_rows = table.find_all('tr')
             rows = [r for r in all_rows if not (r.get('class') and 'thead' in r.get('class'))]
         
         for row in rows:
-            # Skip header rows
             if row.get('class') and 'thead' in row.get('class'):
                 continue
-            
-            # Find player link
             link = row.find('a', href=re.compile(r'/players/'))
             if link and link.get('href'):
                 player_id = extract_player_id(link.get('href'))
@@ -111,13 +224,9 @@ def scrape_stat_table(year: int, stat_type: str) -> Optional[pd.DataFrame]:
             else:
                 player_ids.append(None)
         
-        # Parse table with pandas
-        dfs = pd.read_html(str(table))
-        if not dfs:
-            print(f"Warning: Could not parse table for {stat_type} in {year}")
-            return None
-        
-        df = dfs[0]
+        # Polite delay to avoid rate limiting (3 seconds between requests)
+        # Sports Reference limit: 20 requests per minute (60/20 = 3 seconds)
+        time.sleep(3)
         
         # Clean up dataframe - remove header rows that pandas might have included
         # Remove rows where first column is 'Rk' or 'Player'
@@ -213,8 +322,9 @@ def save_to_csv(df: pd.DataFrame, year: int, stat_type: str) -> bool:
         return False
     
     try:
-        # Create year folder if it doesn't exist
-        year_folder = str(year)
+        # Create data/year folder structure if it doesn't exist
+        data_folder = 'data'
+        year_folder = os.path.join(data_folder, str(year))
         os.makedirs(year_folder, exist_ok=True)
         
         # Map stat_type to filename
