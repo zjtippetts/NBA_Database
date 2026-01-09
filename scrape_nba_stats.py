@@ -7,6 +7,7 @@ Scrapes player statistics from Basketball-Reference.com for specified years.
 import os
 import sys
 import re
+import time
 import argparse
 from typing import List, Optional
 import requests
@@ -70,6 +71,10 @@ def scrape_stat_table(year: int, stat_type: str) -> Optional[pd.DataFrame]:
         }
         response = requests.get(url, headers=headers, timeout=30)
         response.raise_for_status()
+        
+        # Polite delay to avoid rate limiting (3 seconds between requests)
+        # Sports Reference limit: 20 requests per minute (60/20 = 3 seconds)
+        time.sleep(3)
         
         # Parse HTML with BeautifulSoup to extract player links
         soup = BeautifulSoup(response.content, 'html.parser')
@@ -248,7 +253,8 @@ def scrape_year(year: int) -> None:
     print("=" * 50)
     
     success_count = 0
-    for stat_type in STAT_TYPES.values():
+    stat_types_list = list(STAT_TYPES.values())
+    for i, stat_type in enumerate(stat_types_list):
         print(f"Scraping {stat_type}...", end=" ")
         df = scrape_stat_table(year, stat_type)
         
@@ -259,6 +265,9 @@ def scrape_year(year: int) -> None:
                 print(f"Failed to save {stat_type}")
         else:
             print(f"Failed to scrape {stat_type}")
+        
+        # Note: No additional delay needed here - the 3-second delay in scrape_stat_table()
+        # already ensures we stay within Sports Reference's 20 requests/minute limit
     
     print("=" * 50)
     print(f"Completed: {success_count}/{len(STAT_TYPES)} stat types scraped successfully for {year}")
@@ -307,9 +316,13 @@ def main():
         sys.exit(1)
     
     # Scrape each year
-    for year in valid_years:
+    for i, year in enumerate(valid_years):
         try:
             scrape_year(year)
+            # Add delay between years (except after the last one)
+            if i < len(valid_years) - 1:
+                print(f"\nWaiting 3 seconds before next year...")
+                time.sleep(3)
         except KeyboardInterrupt:
             print("\n\nScraping interrupted by user")
             sys.exit(1)
