@@ -94,14 +94,14 @@ NBA_Code/
 └── data/                    # Data folder (created at runtime)
     └── [year folders created at runtime]
         └── 2025/
-            ├── totals.csv
-            ├── per_game.csv
-            ├── per_minute.csv
-            ├── per_poss.csv
-            ├── advanced.csv
-            ├── play_by_play.csv
-            ├── shooting.csv
-            └── adj_shooting.csv
+            ├── totals_2025.csv
+            ├── per_game_2025.csv
+            ├── per_minute_2025.csv
+            ├── per_poss_2025.csv
+            ├── advanced_2025.csv
+            ├── play_by_play_2025.csv
+            ├── shooting_2025.csv
+            └── adj_shooting_2025.csv
 ```
 
 ### CSV File Format
@@ -124,14 +124,14 @@ Output:
 ```
 Scraping NBA 2025 season stats...
 ==================================================
-Scraping totals... Saved data/2025/totals.csv (735 rows)
-Scraping per_game... Saved data/2025/per_game.csv (735 rows)
-Scraping per_minute... Saved data/2025/per_minute.csv (735 rows)
-Scraping per_poss... Saved data/2025/per_poss.csv (735 rows)
-Scraping advanced... Saved data/2025/advanced.csv (735 rows)
-Scraping play-by-play... Saved data/2025/play_by_play.csv (735 rows)
-Scraping shooting... Saved data/2025/shooting.csv (735 rows)
-Scraping adj_shooting... Saved data/2025/adj_shooting.csv (735 rows)
+Scraping totals... Saved data/2025/totals_2025.csv (735 rows)
+Scraping per_game... Saved data/2025/per_game_2025.csv (735 rows)
+Scraping per_minute... Saved data/2025/per_minute_2025.csv (735 rows)
+Scraping per_poss... Saved data/2025/per_poss_2025.csv (735 rows)
+Scraping advanced... Saved data/2025/advanced_2025.csv (735 rows)
+Scraping play-by-play... Saved data/2025/play_by_play_2025.csv (735 rows)
+Scraping shooting... Saved data/2025/shooting_2025.csv (735 rows)
+Scraping adj_shooting... Saved data/2025/adj_shooting_2025.csv (735 rows)
 ==================================================
 Completed: 8/8 stat types scraped successfully for 2025
 ```

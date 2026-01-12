@@ -327,19 +327,20 @@ def save_to_csv(df: pd.DataFrame, year: int, stat_type: str) -> bool:
         year_folder = os.path.join(data_folder, str(year))
         os.makedirs(year_folder, exist_ok=True)
         
-        # Map stat_type to filename
+        # Map stat_type to base filename (without year and extension)
         filename_map = {
-            'totals': 'totals.csv',
-            'per_game': 'per_game.csv',
-            'per_minute': 'per_minute.csv',
-            'per_poss': 'per_poss.csv',
-            'advanced': 'advanced.csv',
-            'play-by-play': 'play_by_play.csv',
-            'shooting': 'shooting.csv',
-            'adj_shooting': 'adj_shooting.csv'
+            'totals': 'totals',
+            'per_game': 'per_game',
+            'per_minute': 'per_minute',
+            'per_poss': 'per_poss',
+            'advanced': 'advanced',
+            'play-by-play': 'play_by_play',
+            'shooting': 'shooting',
+            'adj_shooting': 'adj_shooting'
         }
         
-        filename = filename_map.get(stat_type, f"{stat_type}.csv")
+        base_filename = filename_map.get(stat_type, stat_type)
+        filename = f"{base_filename}_{year}.csv"
         filepath = os.path.join(year_folder, filename)
         
         # Save to CSV
