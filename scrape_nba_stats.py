@@ -30,6 +30,136 @@ STAT_TYPES = {
 }
 
 
+def clean_column_name(col_name):
+    """Clean column names: remove special chars, spaces, handle numbers, etc."""
+    if pd.isna(col_name) or col_name == '':
+        return 'Unnamed'
+    
+    col = str(col_name)
+    needs_leading_underscore = False
+    
+    # Handle columns starting with numbers - add underscore prefix
+    # Check for ranges first (they contain -)
+    if '-' in col and not col.startswith('%'):
+        if col.startswith('0-3'):
+            col = 'range_0_3' + col[3:]
+        elif col.startswith('3-10'):
+            col = 'range_3_10' + col[4:]
+        elif col.startswith('10-16'):
+            col = 'range_10_16' + col[5:]
+        elif col.startswith('16-3P'):
+            col = 'range_16_3P' + col[5:]
+    # Handle columns starting with 2P or 3P
+    elif col.startswith('2P'):
+        col = '_2P' + col[2:]
+        needs_leading_underscore = True
+    elif col.startswith('3P'):
+        col = '_3P' + col[2:]
+        needs_leading_underscore = True
+    # Handle other columns starting with digits
+    elif col and col[0].isdigit():
+        col = '_' + col
+        needs_leading_underscore = True
+    
+    # Remove parentheses and incorporate content
+    col = re.sub(r'\(% of FGA\)', '_pct_of_FGA', col)
+    col = re.sub(r'\(FG%\)', '_FG_pct', col)
+    col = re.sub(r'\(% AST\'d\)', '_pct_ASTd', col)
+    col = re.sub(r'\(Corner 3s\)', '_Corner_3s', col)
+    col = re.sub(r'\(([^)]+)\)', r'_\1', col)  # Any other parentheses
+    
+    # Handle percentage signs
+    col = col.replace('%', '_pct')
+    
+    # Handle special characters
+    col = col.replace('+', '')  # Remove +, keep _LA
+    col = col.replace('/', '_per_')
+    col = col.replace('-', '_')
+    col = col.replace(' ', '_')
+    col = col.replace('.', '')
+    col = col.replace('#', '_ct')
+    col = col.replace("'", '')
+    
+    # Clean up multiple underscores
+    col = re.sub(r'_+', '_', col)
+    
+    # Remove trailing underscores, but preserve leading underscore if we added it for numbers
+    col = col.rstrip('_')
+    if not needs_leading_underscore:
+        col = col.lstrip('_')
+    
+    return col
+
+
+def split_awards_column(df):
+    """Split Awards column into separate award columns."""
+    if 'Awards' not in df.columns:
+        # Check if Column_25 or Column_31 exists and has award data
+        for col in ['Column_25', 'Column_31']:
+            if col in df.columns:
+                # Check if this column has award-like data
+                sample = df[col].dropna().head(5)
+                if len(sample) > 0 and any(',' in str(val) or '-' in str(val) for val in sample if pd.notna(val)):
+                    # This looks like awards data - rename it
+                    df = df.rename(columns={col: 'Awards'})
+                    break
+    
+    if 'Awards' not in df.columns:
+        return df
+    
+    # Get all unique awards across all rows
+    all_awards = set()
+    for awards_str in df['Awards'].dropna():
+        if pd.notna(awards_str):
+            awards = str(awards_str).split(',')
+            for award in awards:
+                award = award.strip()
+                if award:
+                    # Extract base award name (remove number if present)
+                    if '-' in award:
+                        base_award = award.split('-')[0]
+                    else:
+                        base_award = award
+                    all_awards.add(base_award)
+    
+    # Create columns for each award
+    for award in sorted(all_awards):
+        award_col = []
+        for awards_str in df['Awards']:
+            if pd.isna(awards_str):
+                award_col.append(0)
+            else:
+                awards = str(awards_str).split(',')
+                found = False
+                for a in awards:
+                    a = a.strip()
+                    if a.startswith(award):
+                        # Extract number if present
+                        if '-' in a:
+                            try:
+                                num = int(a.split('-')[1])
+                                award_col.append(num)
+                            except:
+                                award_col.append(1)
+                        else:
+                            award_col.append(1)
+                        found = True
+                        break
+                if not found:
+                    award_col.append(0)
+        
+        df[award] = award_col
+    
+    # Drop the original Awards column and any Column_* columns that were awards
+    cols_to_drop = ['Awards']
+    for col in ['Column_25', 'Column_31']:
+        if col in df.columns:
+            cols_to_drop.append(col)
+    df = df.drop(columns=cols_to_drop)
+    
+    return df
+
+
 def extract_player_id(url: str) -> Optional[str]:
     """
     Extract player ID from Basketball-Reference player URL.
@@ -296,6 +426,12 @@ def scrape_stat_table(year: int, stat_type: str) -> Optional[pd.DataFrame]:
         if first_level is not None and second_level is not None and stat_type in ['adj_shooting', 'play-by-play', 'shooting']:
             df = process_multi_level_headers(df, stat_type, first_level, second_level)
         
+        # Clean column names
+        df.columns = [clean_column_name(col) for col in df.columns]
+        
+        # Split awards column
+        df = split_awards_column(df)
+        
         return df
         
     except requests.exceptions.RequestException as e:
@@ -391,6 +527,7 @@ def process_multi_level_headers(df: pd.DataFrame, stat_type: str, first_level: l
 def save_to_csv(df: pd.DataFrame, year: int, stat_type: str) -> bool:
     """
     Save scraped data to CSV in year folder.
+    Also adds year column and saves to combined all_years file.
     
     Args:
         df: DataFrame to save
@@ -426,9 +563,36 @@ def save_to_csv(df: pd.DataFrame, year: int, stat_type: str) -> bool:
         filename = f"{base_filename}_{year}.csv"
         filepath = os.path.join(year_folder, filename)
         
-        # Save to CSV
-        df.to_csv(filepath, index=False)
-        print(f"Saved {filepath} ({len(df)} rows)")
+        # Add year column
+        df_with_year = df.copy()
+        df_with_year.insert(1, 'year', year)
+        
+        # Save year-specific file
+        df_with_year.to_csv(filepath, index=False)
+        print(f"Saved {filepath} ({len(df_with_year)} rows)")
+        
+        # Also update/append to combined all_years file
+        all_years_folder = os.path.join(data_folder, 'all_years')
+        os.makedirs(all_years_folder, exist_ok=True)
+        combined_file = os.path.join(all_years_folder, f"{base_filename}_all_years.csv")
+        if os.path.exists(combined_file):
+            # Read existing combined file
+            combined_df = pd.read_csv(combined_file)
+            # Remove rows for this year if they exist (in case of re-scraping)
+            combined_df = combined_df[combined_df['year'] != year]
+            # Append new data
+            combined_df = pd.concat([combined_df, df_with_year], ignore_index=True)
+        else:
+            combined_df = df_with_year
+        
+        # Reorder columns: player_id, year first
+        cols = ['player_id', 'year'] + [c for c in combined_df.columns if c not in ['player_id', 'year']]
+        combined_df = combined_df[cols]
+        
+        # Save combined file
+        combined_df.to_csv(combined_file, index=False)
+        print(f"Updated {combined_file} ({len(combined_df)} total rows)")
+        
         return True
         
     except Exception as e:
