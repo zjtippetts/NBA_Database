@@ -131,56 +131,53 @@ def scrape_stat_table(year: int, stat_type: str) -> Optional[pd.DataFrame]:
     url = f"https://www.basketball-reference.com/leagues/NBA_{year}_{stat_type}.html"
     
     try:
-        # Try using pandas.read_html() directly on the URL first
-        # This is simpler and pandas handles the HTTP request internally
-        dfs = None
-        html_content = None
+        # Fetch HTML first (we'll need it for player IDs and potentially for table parsing)
+        html_content = fetch_html_with_fallback(url)
         
-        try:
-            dfs = pd.read_html(url, attrs={'id': stat_type})
-            # If successful, try to get HTML for player ID extraction
-            html_content = fetch_html_with_fallback(url)
-        except (ValueError, Exception) as e:
-            # pandas.read_html() failed - try fallback method
-            pass
-        
-        if not dfs:
-            try:
-                # Try without specifying table ID
-                dfs = pd.read_html(url)
-                if dfs:
-                    html_content = fetch_html_with_fallback(url)
-            except (ValueError, Exception) as e:
-                # Still failed - use fallback method
-                pass
-        
-        # If pandas.read_html() didn't work, use our fallback approach
-        if not dfs:
-            # Fetch HTML using fallback method (requests -> urllib)
-            html_content = fetch_html_with_fallback(url)
-            
-            if not html_content:
-                print(f"Could not fetch HTML")
-                return None
-            
-            # Parse HTML with BeautifulSoup
-            soup = BeautifulSoup(html_content, 'html.parser')
-            table = soup.find('table', {'id': stat_type})
-            if not table:
-                table = soup.find('table', class_='sortable')
-            
-            if not table:
-                print(f"Could not find table")
-                return None
-            
-            # Parse table with pandas from HTML string
-            dfs = pd.read_html(str(table))
-        
-        if not dfs:
-            print(f"Could not parse table")
+        if not html_content:
+            print(f"Could not fetch HTML")
             return None
         
-        df = dfs[0]
+        # Parse HTML with BeautifulSoup to find the table
+        soup = BeautifulSoup(html_content, 'html.parser')
+        table = soup.find('table', {'id': stat_type})
+        if not table:
+            table = soup.find('table', class_='sortable')
+        
+        if not table:
+            print(f"Could not find table")
+            return None
+        
+        # Check if this stat type has multi-level headers
+        has_multi_headers = stat_type in ['adj_shooting', 'play-by-play', 'shooting']
+        
+        if has_multi_headers:
+            # Read with multi-level headers to get both levels
+            dfs_multi = pd.read_html(str(table), header=[0, 1])
+            if not dfs_multi:
+                print(f"Could not parse table with multi-level headers")
+                return None
+            
+            df_multi = dfs_multi[0]
+            first_level = df_multi.columns.get_level_values(0).tolist()
+            second_level = df_multi.columns.get_level_values(1).tolist()
+            
+            # Now read the data (skip the two header rows)
+            dfs_data = pd.read_html(str(table), skiprows=2)
+            if not dfs_data:
+                print(f"Could not parse table data")
+                return None
+            
+            df = dfs_data[0]
+        else:
+            # Single level headers - read normally
+            dfs = pd.read_html(str(table))
+            if not dfs:
+                print(f"Could not parse table")
+                return None
+            df = dfs[0]
+            first_level = None
+            second_level = None
         
         # Get HTML for player ID extraction if we don't have it yet
         if html_content is None:
@@ -295,6 +292,10 @@ def scrape_stat_table(year: int, stat_type: str) -> Optional[pd.DataFrame]:
         # Clean up: remove rows where player_id is None (shouldn't happen, but just in case)
         df = df[df['player_id'].notna()].copy()
         
+        # Process multi-level headers if we detected them earlier
+        if first_level is not None and second_level is not None and stat_type in ['adj_shooting', 'play-by-play', 'shooting']:
+            df = process_multi_level_headers(df, stat_type, first_level, second_level)
+        
         return df
         
     except requests.exceptions.RequestException as e:
@@ -303,6 +304,88 @@ def scrape_stat_table(year: int, stat_type: str) -> Optional[pd.DataFrame]:
     except Exception as e:
         print(f"Error parsing data for {stat_type} in {year}: {e}")
         return None
+
+
+def process_multi_level_headers(df: pd.DataFrame, stat_type: str, first_level: list, second_level: list) -> pd.DataFrame:
+    """
+    Process multi-level headers for stat types that have them.
+    
+    Args:
+        df: DataFrame with multi-level headers
+        stat_type: Type of stats being processed
+        first_level: First level of headers
+        second_level: Second level of headers
+    
+    Returns:
+        DataFrame with processed single-level headers
+    """
+    new_columns = ['player_id']  # Keep player_id from first column
+    
+    # Process the rest of the columns
+    for i in range(1, len(first_level)):
+        first = str(first_level[i])
+        second = str(second_level[i])
+        
+        # Use second level as the base column name
+        if pd.isna(second_level[i]) or second in ['nan', '', 'Unnamed: 0_level_1']:
+            if first not in ['nan', ''] and not first.startswith('Unnamed'):
+                new_col = first
+            else:
+                new_col = f'Column_{i}'
+        else:
+            new_col = second
+        
+        # Apply transformations based on stat type and first level header
+        if stat_type == 'adj_shooting':
+            # If first level contains "League-Adjusted" or "League Adjusted", add " LA" to the column name
+            if 'League-Adjusted' in first or 'League Adjusted' in first:
+                new_col = new_col + ' LA'
+        
+        elif stat_type == 'play-by-play':
+            # If first row says "+/- Per 100 Poss", add " p100" to the end
+            if '+/- Per 100 Poss' in first:
+                new_col = new_col + ' p100'
+            # If it says "Turnovers", add " TO" to the end
+            elif 'Turnovers' in first:
+                new_col = new_col + ' TO'
+            # If it says "Fouls Committed", add " Foul" to the end
+            elif 'Fouls Committed' in first:
+                new_col = new_col + ' Foul'
+            # If it says "Fouls Drawn", add " Drawn" to the end
+            elif 'Fouls Drawn' in first:
+                new_col = new_col + ' Drawn'
+        
+        elif stat_type == 'shooting':
+            # If 1st row says "% of FGA by Distance", add " (% of FGA)" to the end
+            if '% of FGA by Distance' in first:
+                new_col = new_col + ' (% of FGA)'
+            # If it says "FG% by Distance", add " (FG%)" to the end
+            elif 'FG% by Distance' in first:
+                new_col = new_col + ' (FG%)'
+            # If it says "% of FG Ast'd", add " (% AST'd)" to the end
+            elif '% of FG Ast\'d' in first or '% of FG Ast\'d' in first:
+                new_col = new_col + ' (% AST\'d)'
+            # If it says "Dunks", add "Dunks " to the start
+            elif 'Dunks' in first:
+                new_col = 'Dunks ' + new_col
+            # If it says "Corner 3s", add " (Corner 3s)" to the end
+            elif 'Corner 3s' in first:
+                new_col = new_col + ' (Corner 3s)'
+            # If it says "1/2 Court", add "Half Court " to the start
+            elif '1/2 Court' in first:
+                new_col = 'Half Court ' + new_col
+        
+        new_columns.append(new_col)
+    
+    # Make sure we have the right number of columns
+    if len(new_columns) != len(df.columns):
+        while len(new_columns) < len(df.columns):
+            new_columns.append(f'Column_{len(new_columns)}')
+        new_columns = new_columns[:len(df.columns)]
+    
+    # Assign new column names
+    df.columns = new_columns
+    return df
 
 
 def save_to_csv(df: pd.DataFrame, year: int, stat_type: str) -> bool:
