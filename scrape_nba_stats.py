@@ -91,6 +91,62 @@ def clean_column_name(col_name):
     return col
 
 
+def handle_traded_players(df):
+    """
+    Handle players who were traded during the season.
+    - Keep only the total row (2TM, 3TM, etc.)
+    - Replace TM code with comma-separated team abbreviations in order
+    - Remove individual team rows
+    
+    Args:
+        df: DataFrame with player stats
+        
+    Returns:
+        DataFrame with traded players handled
+    """
+    if df.empty or 'player_id' not in df.columns or 'Team' not in df.columns:
+        return df
+    
+    # Find all rows with TM in Team column (traded players' total rows)
+    tm_mask = df['Team'].astype(str).str.contains('TM', na=False)
+    tm_rows = df[tm_mask].copy()
+    
+    if tm_rows.empty:
+        return df
+    
+    # Process each traded player
+    indices_to_drop = []
+    
+    for idx, tm_row in tm_rows.iterrows():
+        player_id = tm_row['player_id']
+        
+        # Get all rows for this player
+        player_rows = df[df['player_id'] == player_id].copy()
+        
+        # Get individual team rows (non-TM rows)
+        team_rows = player_rows[~player_rows['Team'].astype(str).str.contains('TM', na=False)]
+        
+            if not team_rows.empty:
+                # Extract team abbreviations in order they appear in the dataframe
+                teams = team_rows['Team'].astype(str).tolist()
+                # Filter out any NaN or empty values, and ensure no TM codes slip through
+                teams = [t for t in teams if t and t != 'nan' and t.strip() and 'TM' not in t]
+            
+            if teams:
+                # Replace TM code with comma-separated teams
+                df.loc[idx, 'Team'] = ','.join(teams)
+                
+                # Mark individual team rows for removal
+                indices_to_drop.extend(team_rows.index.tolist())
+    
+    # Remove individual team rows
+    if indices_to_drop:
+        df = df.drop(index=indices_to_drop).copy()
+        df = df.reset_index(drop=True)
+    
+    return df
+
+
 def split_awards_column(df):
     """Split Awards column into separate award columns."""
     if 'Awards' not in df.columns:
@@ -428,6 +484,13 @@ def scrape_stat_table(year: int, stat_type: str) -> Optional[pd.DataFrame]:
         
         # Clean column names
         df.columns = [clean_column_name(col) for col in df.columns]
+        
+        # Remove Rk column if it exists
+        if 'Rk' in df.columns:
+            df = df.drop(columns=['Rk'])
+        
+        # Handle traded players - keep only total row and replace TM with team abbreviations
+        df = handle_traded_players(df)
         
         # Split awards column
         df = split_awards_column(df)
