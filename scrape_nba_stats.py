@@ -147,6 +147,77 @@ def handle_traded_players(df):
     return df
 
 
+def normalize_columns(df: pd.DataFrame, stat_type: str) -> pd.DataFrame:
+    """
+    Normalize columns across different stat types:
+    1. Keep player_id and year in all tables
+    2. Keep biographical info (Player, Age, Team, Pos) only in totals
+    3. Keep award columns only in totals
+    4. Keep percentage columns (FG_pct, _3P_pct, _2P_pct, eFG_pct, FT_pct) only in totals and shooting
+    5. Rename stat columns with suffixes for clarity (_total, _pGame, _p36, _p100)
+    
+    Args:
+        df: DataFrame to normalize
+        stat_type: Type of stats (totals, per_game, per_minute, per_poss, etc.)
+    
+    Returns:
+        Normalized DataFrame
+    """
+    # Biographical columns (keep only in totals)
+    bio_cols = ['Player', 'Age', 'Team', 'Pos']
+    
+    # Award columns (keep only in totals)
+    award_cols = ['6MOY', 'AS', 'CPOY', 'DEF1', 'DEF2', 'DPOY', 'MIP', 'MVP', 
+                   'NBA1', 'NBA2', 'NBA3', 'ROY', 'Trp_Dbl']
+    
+    # Percentage columns (keep only in totals and shooting)
+    pct_cols = ['FG_pct', '_3P_pct', '_2P_pct', 'eFG_pct', 'FT_pct']
+    
+    # Stat columns that need renaming (columns that have different values across tables)
+    # These are the counting/rate stats, not percentages
+    # Note: G, GS, MP are the same across all tables (totals), so they don't need renaming
+    stat_cols_to_rename = ['FG', 'FGA', '_3P', '_3PA', '_2P', '_2PA', 'FT', 'FTA',
+                           'ORB', 'DRB', 'TRB', 'AST', 'STL', 'BLK', 'TOV', 'PF', 'PTS']
+    
+    # Determine suffix based on stat_type
+    suffix_map = {
+        'totals': '_total',
+        'per_game': '_pGame',
+        'per_minute': '_p36',
+        'per_poss': '_p100'
+    }
+    suffix = suffix_map.get(stat_type, '')
+    
+    # Remove biographical columns if not totals
+    if stat_type != 'totals':
+        cols_to_drop = [col for col in bio_cols if col in df.columns]
+        if cols_to_drop:
+            df = df.drop(columns=cols_to_drop)
+    
+    # Remove award columns if not totals
+    if stat_type != 'totals':
+        cols_to_drop = [col for col in award_cols if col in df.columns]
+        if cols_to_drop:
+            df = df.drop(columns=cols_to_drop)
+    
+    # Remove percentage columns if not totals or shooting
+    if stat_type not in ['totals', 'shooting']:
+        cols_to_drop = [col for col in pct_cols if col in df.columns]
+        if cols_to_drop:
+            df = df.drop(columns=cols_to_drop)
+    
+    # Rename stat columns with suffixes
+    if suffix:
+        rename_dict = {}
+        for col in stat_cols_to_rename:
+            if col in df.columns:
+                rename_dict[col] = col + suffix
+        if rename_dict:
+            df = df.rename(columns=rename_dict)
+    
+    return df
+
+
 def split_awards_column(df):
     """Split Awards column into separate award columns."""
     if 'Awards' not in df.columns:
@@ -494,6 +565,9 @@ def scrape_stat_table(year: int, stat_type: str) -> Optional[pd.DataFrame]:
         
         # Split awards column
         df = split_awards_column(df)
+        
+        # Normalize columns: remove redundant columns and rename stat columns
+        df = normalize_columns(df, stat_type)
         
         return df
         
