@@ -126,15 +126,15 @@ def handle_traded_players(df):
         # Get individual team rows (non-TM rows)
         team_rows = player_rows[~player_rows['Team'].astype(str).str.contains('TM', na=False)]
         
-            if not team_rows.empty:
-                # Extract team abbreviations in order they appear in the dataframe
-                teams = team_rows['Team'].astype(str).tolist()
-                # Filter out any NaN or empty values, and ensure no TM codes slip through
-                teams = [t for t in teams if t and t != 'nan' and t.strip() and 'TM' not in t]
+        if not team_rows.empty:
+            # Extract team abbreviations in order they appear in the dataframe
+            teams = team_rows['Team'].astype(str).tolist()
+            # Filter out any NaN or empty values, and ensure no TM codes slip through
+            teams = [t for t in teams if t and t != 'nan' and t.strip() and 'TM' not in t]
             
             if teams:
-                # Replace TM code with comma-separated teams
-                df.loc[idx, 'Team'] = ','.join(teams)
+                # Replace TM code with comma-separated teams (with space after comma)
+                df.loc[idx, 'Team'] = ', '.join(teams)
                 
                 # Mark individual team rows for removal
                 indices_to_drop.extend(team_rows.index.tolist())
