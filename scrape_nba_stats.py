@@ -154,7 +154,9 @@ def normalize_columns(df: pd.DataFrame, stat_type: str) -> pd.DataFrame:
     2. Keep biographical info (Player, Age, Team, Pos) only in totals
     3. Keep award columns only in totals
     4. Keep percentage columns (FG_pct, _3P_pct, _2P_pct, eFG_pct, FT_pct) only in totals and shooting
-    5. Rename stat columns with suffixes for clarity (_total, _pGame, _p36, _p100)
+    5. Keep G, GS only in totals (remove from all other tables)
+    6. Keep MP in totals and per_game (MP is different in per_game - it's per game, not total)
+    7. Rename stat columns with suffixes for clarity (_total, _pGame, _p36, _p100)
     
     Args:
         df: DataFrame to normalize
@@ -173,9 +175,14 @@ def normalize_columns(df: pd.DataFrame, stat_type: str) -> pd.DataFrame:
     # Percentage columns (keep only in totals and shooting)
     pct_cols = ['FG_pct', '_3P_pct', '_2P_pct', 'eFG_pct', 'FT_pct']
     
+    # G and GS (keep only in totals)
+    game_cols = ['G', 'GS']
+    
+    # MP handling: different in per_game (per game average) vs totals (total minutes)
+    # Keep MP in totals and per_game, remove from others
+    
     # Stat columns that need renaming (columns that have different values across tables)
     # These are the counting/rate stats, not percentages
-    # Note: G, GS, MP are the same across all tables (totals), so they don't need renaming
     stat_cols_to_rename = ['FG', 'FGA', '_3P', '_3PA', '_2P', '_2PA', 'FT', 'FTA',
                            'ORB', 'DRB', 'TRB', 'AST', 'STL', 'BLK', 'TOV', 'PF', 'PTS']
     
@@ -206,12 +213,28 @@ def normalize_columns(df: pd.DataFrame, stat_type: str) -> pd.DataFrame:
         if cols_to_drop:
             df = df.drop(columns=cols_to_drop)
     
+    # Remove G and GS if not totals
+    if stat_type != 'totals':
+        cols_to_drop = [col for col in game_cols if col in df.columns]
+        if cols_to_drop:
+            df = df.drop(columns=cols_to_drop)
+    
+    # Remove MP if not totals or per_game (MP is different in per_game - it's per game average)
+    if stat_type not in ['totals', 'per_game']:
+        if 'MP' in df.columns:
+            df = df.drop(columns=['MP'])
+    
     # Rename stat columns with suffixes
     if suffix:
         rename_dict = {}
         for col in stat_cols_to_rename:
             if col in df.columns:
                 rename_dict[col] = col + suffix
+        
+        # Also rename MP in per_game (it's per game, not total)
+        if stat_type == 'per_game' and 'MP' in df.columns:
+            rename_dict['MP'] = 'MP_pGame'
+        
         if rename_dict:
             df = df.rename(columns=rename_dict)
     
