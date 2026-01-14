@@ -234,9 +234,15 @@ def normalize_columns(df: pd.DataFrame, stat_type: str) -> pd.DataFrame:
         # Also rename MP in per_game (it's per game, not total)
         if stat_type == 'per_game' and 'MP' in df.columns:
             rename_dict['MP'] = 'MP_pGame'
-        
-        if rename_dict:
-            df = df.rename(columns=rename_dict)
+    
+    # Rename MP to MP_total in totals table for consistency
+    if stat_type == 'totals' and 'MP' in df.columns:
+        if 'rename_dict' not in locals():
+            rename_dict = {}
+        rename_dict['MP'] = 'MP_total'
+    
+    if 'rename_dict' in locals() and rename_dict:
+        df = df.rename(columns=rename_dict)
     
     return df
 
