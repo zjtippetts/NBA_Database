@@ -207,8 +207,8 @@ def normalize_columns(df: pd.DataFrame, stat_type: str) -> pd.DataFrame:
         if cols_to_drop:
             df = df.drop(columns=cols_to_drop)
     
-    # Remove percentage columns if not shooting (keep only in shooting table)
-    if stat_type != 'shooting':
+    # Remove percentage columns if not adj_shooting (keep only in adj_shooting table)
+    if stat_type != 'adj_shooting':
         cols_to_drop = [col for col in pct_cols if col in df.columns]
         if cols_to_drop:
             df = df.drop(columns=cols_to_drop)
