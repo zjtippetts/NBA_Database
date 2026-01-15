@@ -98,8 +98,8 @@ NBA_Code/
     ├── all_years/           # Combined files (all years together)
     │   ├── totals_all_years.csv
     │   ├── per_game_all_years.csv
-    │   ├── per_minute_all_years.csv
-    │   ├── per_poss_all_years.csv
+    │   ├── per_36_all_years.csv
+    │   ├── per_100_poss_all_years.csv
     │   ├── advanced_all_years.csv
     │   ├── play_by_play_all_years.csv
     │   ├── shooting_all_years.csv
@@ -108,8 +108,8 @@ NBA_Code/
         └── 2025/
             ├── totals_2025.csv
             ├── per_game_2025.csv
-            ├── per_minute_2025.csv
-            ├── per_poss_2025.csv
+            ├── per_36_2025.csv
+            ├── per_100_poss_2025.csv
             ├── advanced_2025.csv
             ├── play_by_play_2025.csv
             ├── shooting_2025.csv

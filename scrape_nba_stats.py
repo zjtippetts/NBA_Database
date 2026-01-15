@@ -21,8 +21,8 @@ from bs4 import BeautifulSoup
 STAT_TYPES = {
     'totals': 'totals',
     'per_game': 'per_game',
-    'per_minute': 'per_minute',
-    'per_poss': 'per_poss',
+    'per_36': 'per_minute',
+    'per_100_poss': 'per_poss',
     'advanced': 'advanced',
     'play-by-play': 'play-by-play',
     'shooting': 'shooting',
@@ -160,7 +160,7 @@ def normalize_columns(df: pd.DataFrame, stat_type: str) -> pd.DataFrame:
     
     Args:
         df: DataFrame to normalize
-        stat_type: Type of stats (totals, per_game, per_minute, per_poss, etc.)
+        stat_type: Type of stats (totals, per_game, per_36, per_100_poss, etc.)
     
     Returns:
         Normalized DataFrame
@@ -172,8 +172,8 @@ def normalize_columns(df: pd.DataFrame, stat_type: str) -> pd.DataFrame:
     award_cols = ['6MOY', 'AS', 'CPOY', 'DEF1', 'DEF2', 'DPOY', 'MIP', 'MVP', 
                    'NBA1', 'NBA2', 'NBA3', 'ROY', 'Trp_Dbl']
     
-    # Percentage columns (keep only in totals and shooting)
-    pct_cols = ['FG_pct', '_3P_pct', '_2P_pct', 'eFG_pct', 'FT_pct']
+    # Percentage columns (keep only in adj_shooting)
+    pct_cols = ['FG_pct', '_3P_pct', '_2P_pct', 'eFG_pct', 'FT_pct', 'TS_pct']
     
     # G and GS (keep only in totals)
     game_cols = ['G', 'GS']
@@ -190,8 +190,8 @@ def normalize_columns(df: pd.DataFrame, stat_type: str) -> pd.DataFrame:
     suffix_map = {
         'totals': '_total',
         'per_game': '_pGame',
-        'per_minute': '_p36',
-        'per_poss': '_p100'
+        'per_36': '_p36',
+        'per_100_poss': '_p100'
     }
     suffix = suffix_map.get(stat_type, '')
     
@@ -401,7 +401,7 @@ def fetch_html_with_fallback(url: str) -> Optional[str]:
             return None
 
 
-def scrape_stat_table(year: int, stat_type: str) -> Optional[pd.DataFrame]:
+def scrape_stat_table(year: int, stat_type: str, internal_stat_type: str = None) -> Optional[pd.DataFrame]:
     """
     Scrape a single stat table for a given year from Basketball-Reference.
     Uses pandas.read_html() directly on URL for table parsing.
@@ -448,13 +448,8 @@ def scrape_stat_table(year: int, stat_type: str) -> Optional[pd.DataFrame]:
             first_level = df_multi.columns.get_level_values(0).tolist()
             second_level = df_multi.columns.get_level_values(1).tolist()
             
-            # Now read the data (skip the two header rows)
-            dfs_data = pd.read_html(str(table), skiprows=2)
-            if not dfs_data:
-                print(f"Could not parse table data")
-                return None
-            
-            df = dfs_data[0]
+            # Use the DataFrame with multi-level headers - we'll process the headers later
+            df = df_multi.copy()
         else:
             # Single level headers - read normally
             dfs = pd.read_html(str(table))
@@ -596,7 +591,9 @@ def scrape_stat_table(year: int, stat_type: str) -> Optional[pd.DataFrame]:
         df = split_awards_column(df)
         
         # Normalize columns: remove redundant columns and rename stat columns
-        df = normalize_columns(df, stat_type)
+        # Use internal_stat_type if provided, otherwise use stat_type
+        normalize_type = internal_stat_type if internal_stat_type else stat_type
+        df = normalize_columns(df, normalize_type)
         
         return df
         
@@ -613,7 +610,7 @@ def process_multi_level_headers(df: pd.DataFrame, stat_type: str, first_level: l
     Process multi-level headers for stat types that have them.
     
     Args:
-        df: DataFrame with multi-level headers
+        df: DataFrame with multi-level headers (MultiIndex columns)
         stat_type: Type of stats being processed
         first_level: First level of headers
         second_level: Second level of headers
@@ -621,15 +618,30 @@ def process_multi_level_headers(df: pd.DataFrame, stat_type: str, first_level: l
     Returns:
         DataFrame with processed single-level headers
     """
-    new_columns = ['player_id']  # Keep player_id from first column
+    # If df has MultiIndex columns, flatten them first
+    if isinstance(df.columns, pd.MultiIndex):
+        # Get the column levels
+        first_level = df.columns.get_level_values(0).tolist()
+        second_level = df.columns.get_level_values(1).tolist()
+    else:
+        # Already flattened, but we have the levels from parameters
+        first_level = first_level if first_level else [str(c) for c in df.columns]
+        second_level = second_level if second_level else [str(c) for c in df.columns]
     
-    # Process the rest of the columns
-    for i in range(1, len(first_level)):
+    new_columns = []
+    
+    # Process all columns
+    for i in range(len(first_level)):
         first = str(first_level[i])
-        second = str(second_level[i])
+        second = str(second_level[i]) if i < len(second_level) else ''
+        
+        # Handle the first column (usually Player)
+        if i == 0:
+            new_columns.append('player_id')
+            continue
         
         # Use second level as the base column name
-        if pd.isna(second_level[i]) or second in ['nan', '', 'Unnamed: 0_level_1']:
+        if (i >= len(second_level) or pd.isna(second_level[i])) or second in ['nan', '', 'Unnamed: 0_level_1', 'Unnamed: 0']:
             if first not in ['nan', ''] and not first.startswith('Unnamed'):
                 new_col = first
             else:
@@ -717,8 +729,8 @@ def save_to_csv(df: pd.DataFrame, year: int, stat_type: str) -> bool:
         filename_map = {
             'totals': 'totals',
             'per_game': 'per_game',
-            'per_minute': 'per_minute',
-            'per_poss': 'per_poss',
+            'per_36': 'per_36',
+            'per_100_poss': 'per_100_poss',
             'advanced': 'advanced',
             'play-by-play': 'play_by_play',
             'shooting': 'shooting',
@@ -777,10 +789,12 @@ def scrape_year(year: int) -> None:
     print("=" * 50)
     
     success_count = 0
-    stat_types_list = list(STAT_TYPES.values())
+    stat_types_list = list(STAT_TYPES.keys())
     for i, stat_type in enumerate(stat_types_list):
         print(f"Scraping {stat_type}...", end=" ")
-        df = scrape_stat_table(year, stat_type)
+        # Use the URL mapping for scraping, but keep the internal name for file operations
+        url_stat_type = STAT_TYPES[stat_type]
+        df = scrape_stat_table(year, url_stat_type, stat_type)
         
         if df is not None and not df.empty:
             if save_to_csv(df, year, stat_type):

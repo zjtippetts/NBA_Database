@@ -41,8 +41,8 @@ page = st.sidebar.selectbox(
 stat_types = {
     "Totals": "totals",
     "Per Game": "per_game",
-    "Per 36 Minutes": "per_minute",
-    "Per 100 Possessions": "per_poss",
+    "Per 36 Minutes": "per_36",
+    "Per 100 Possessions": "per_100_poss",
     "Advanced": "advanced",
     "Play-by-Play": "play_by_play",
     "Shooting": "shooting",
@@ -83,7 +83,7 @@ if page == "Player Search":
                     st.metric("Latest Season", int(latest_year))
                 
                 with col3:
-                    total_points = player_data['PTS'].sum()
+                    total_points = player_data['PTS_total'].sum()
                     st.metric("Career Points", f"{int(total_points):,}")
                 
                 with col4:
@@ -109,17 +109,35 @@ if page == "Player Search":
                 with col1:
                     st.metric("Games", int(year_data['G']) if pd.notna(year_data['G']) else 0)
                 with col2:
-                    st.metric("Points/Game", f"{year_data['PTS']:.1f}" if pd.notna(year_data['PTS']) else "N/A")
+                    # Calculate points per game from totals
+                    ppg = (year_data['PTS_total'] / year_data['G']) if pd.notna(year_data['G']) and year_data['G'] > 0 else 0
+                    st.metric("Points/Game", f"{ppg:.1f}" if ppg > 0 else "N/A")
                 with col3:
-                    st.metric("Rebounds/Game", f"{year_data['TRB']:.1f}" if pd.notna(year_data['TRB']) else "N/A")
+                    # Calculate rebounds per game from totals
+                    rpg = (year_data['TRB_total'] / year_data['G']) if pd.notna(year_data['G']) and year_data['G'] > 0 else 0
+                    st.metric("Rebounds/Game", f"{rpg:.1f}" if rpg > 0 else "N/A")
                 with col4:
-                    st.metric("Assists/Game", f"{year_data['AST']:.1f}" if pd.notna(year_data['AST']) else "N/A")
+                    # Calculate assists per game from totals
+                    apg = (year_data['AST_total'] / year_data['G']) if pd.notna(year_data['G']) and year_data['G'] > 0 else 0
+                    st.metric("Assists/Game", f"{apg:.1f}" if apg > 0 else "N/A")
                 with col5:
-                    st.metric("FG%", f"{year_data['FG_pct']:.3f}" if pd.notna(year_data['FG_pct']) else "N/A")
+                    # Load adj_shooting for percentage stats
+                    df_adj_shooting = load_stat_file("adj_shooting")
+                    if df_adj_shooting is not None:
+                        player_id = year_data['player_id']
+                        year = year_data['year']
+                        adj_data = df_adj_shooting[(df_adj_shooting['player_id'] == player_id) & (df_adj_shooting['year'] == year)]
+                        if not adj_data.empty and 'FG_pct' in adj_data.columns:
+                            fg_pct = adj_data['FG_pct'].iloc[0]
+                            st.metric("FG%", f"{fg_pct:.3f}" if pd.notna(fg_pct) else "N/A")
+                        else:
+                            st.metric("FG%", "N/A")
+                    else:
+                        st.metric("FG%", "N/A")
                 
                 # Career stats table
                 st.subheader("Career Stats (All Seasons)")
-                display_cols = ['year', 'Team', 'Pos', 'G', 'GS', 'MP', 'PTS', 'TRB', 'AST', 'STL', 'BLK', 'FG_pct', '_3P_pct', 'FT_pct']
+                display_cols = ['year', 'Team', 'Pos', 'G', 'GS', 'MP_total', 'PTS_total', 'TRB_total', 'AST_total', 'STL_total', 'BLK_total']
                 available_cols = [col for col in display_cols if col in player_data.columns]
                 st.dataframe(
                     player_data[available_cols].sort_values('year', ascending=False),
@@ -158,16 +176,17 @@ elif page == "Stat Explorer":
         else:
             df_filtered = df.copy()
         
-        # Player filter
-        players = sorted(df_filtered['Player'].unique())
-        selected_players = st.sidebar.multiselect(
-            "Filter by player(s)",
-            players,
-            default=[]
-        )
-        
-        if selected_players:
-            df_filtered = df_filtered[df_filtered['Player'].isin(selected_players)]
+        # Player filter (only if Player column exists - it's only in totals)
+        if 'Player' in df_filtered.columns:
+            players = sorted(df_filtered['Player'].unique())
+            selected_players = st.sidebar.multiselect(
+                "Filter by player(s)",
+                players,
+                default=[]
+            )
+            
+            if selected_players:
+                df_filtered = df_filtered[df_filtered['Player'].isin(selected_players)]
         
         # Display data
         st.subheader(f"{selected_stat_type} Statistics")
@@ -212,12 +231,14 @@ elif page == "Year Comparison":
             
             with col1:
                 st.write(f"**{int(year1)} Season**")
-                top_year1 = df_year1.nlargest(10, 'PTS')[['Player', 'Team', 'PTS', 'G']]
+                top_year1 = df_year1.nlargest(10, 'PTS_total')[['Player', 'Team', 'PTS_total', 'G']]
+                top_year1 = top_year1.rename(columns={'PTS_total': 'PTS'})
                 st.dataframe(top_year1, use_container_width=True, hide_index=True)
             
             with col2:
                 st.write(f"**{int(year2)} Season**")
-                top_year2 = df_year2.nlargest(10, 'PTS')[['Player', 'Team', 'PTS', 'G']]
+                top_year2 = df_year2.nlargest(10, 'PTS_total')[['Player', 'Team', 'PTS_total', 'G']]
+                top_year2 = top_year2.rename(columns={'PTS_total': 'PTS'})
                 st.dataframe(top_year2, use_container_width=True, hide_index=True)
             
             # League averages
@@ -225,22 +246,31 @@ elif page == "Year Comparison":
             col1, col2, col3 = st.columns(3)
             
             with col1:
+                # Calculate average PPG from totals
+                ppg_year1 = (df_year1['PTS_total'] / df_year1['G']).mean()
+                ppg_year2 = (df_year2['PTS_total'] / df_year2['G']).mean()
                 st.metric(
                     f"{int(year1)} Avg PPG",
-                    f"{df_year1['PTS'].mean():.1f}",
-                    delta=f"{df_year1['PTS'].mean() - df_year2['PTS'].mean():.1f}"
+                    f"{ppg_year1:.1f}",
+                    delta=f"{ppg_year1 - ppg_year2:.1f}"
                 )
             with col2:
+                # Calculate average RPG from totals
+                rpg_year1 = (df_year1['TRB_total'] / df_year1['G']).mean()
+                rpg_year2 = (df_year2['TRB_total'] / df_year2['G']).mean()
                 st.metric(
                     f"{int(year1)} Avg RPG",
-                    f"{df_year1['TRB'].mean():.1f}",
-                    delta=f"{df_year1['TRB'].mean() - df_year2['TRB'].mean():.1f}"
+                    f"{rpg_year1:.1f}",
+                    delta=f"{rpg_year1 - rpg_year2:.1f}"
                 )
             with col3:
+                # Calculate average APG from totals
+                apg_year1 = (df_year1['AST_total'] / df_year1['G']).mean()
+                apg_year2 = (df_year2['AST_total'] / df_year2['G']).mean()
                 st.metric(
                     f"{int(year1)} Avg APG",
-                    f"{df_year1['AST'].mean():.1f}",
-                    delta=f"{df_year1['AST'].mean() - df_year2['AST'].mean():.1f}"
+                    f"{apg_year1:.1f}",
+                    delta=f"{apg_year1 - apg_year2:.1f}"
                 )
         else:
             st.warning("Please select two different years to compare.")
