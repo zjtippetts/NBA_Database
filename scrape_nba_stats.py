@@ -11,10 +11,10 @@ import time
 import argparse
 import gzip
 import urllib.request
-from typing import List, Optional
+from typing import Optional
 import requests
 import pandas as pd
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup  # type: ignore
 
 
 # Stat types and their URL mappings
@@ -295,7 +295,7 @@ def split_awards_column(df):
                             try:
                                 num = int(a.split('-')[1])
                                 award_col.append(num)
-                            except:
+                            except (ValueError, IndexError):
                                 award_col.append(1)
                         else:
                             award_col.append(1)
@@ -421,7 +421,7 @@ def scrape_stat_table(year: int, stat_type: str, internal_stat_type: str = None)
         html_content = fetch_html_with_fallback(url)
         
         if not html_content:
-            print(f"Could not fetch HTML")
+            print("Could not fetch HTML")
             return None
         
         # Parse HTML with BeautifulSoup to find the table
@@ -431,7 +431,7 @@ def scrape_stat_table(year: int, stat_type: str, internal_stat_type: str = None)
             table = soup.find('table', class_='sortable')
         
         if not table:
-            print(f"Could not find table")
+            print("Could not find table")
             return None
         
         # Check if this stat type has multi-level headers
@@ -441,7 +441,7 @@ def scrape_stat_table(year: int, stat_type: str, internal_stat_type: str = None)
             # Read with multi-level headers to get both levels
             dfs_multi = pd.read_html(str(table), header=[0, 1])
             if not dfs_multi:
-                print(f"Could not parse table with multi-level headers")
+                print("Could not parse table with multi-level headers")
                 return None
             
             df_multi = dfs_multi[0]
@@ -454,7 +454,7 @@ def scrape_stat_table(year: int, stat_type: str, internal_stat_type: str = None)
             # Single level headers - read normally
             dfs = pd.read_html(str(table))
             if not dfs:
-                print(f"Could not parse table")
+                print("Could not parse table")
                 return None
             df = dfs[0]
             first_level = None
@@ -467,7 +467,7 @@ def scrape_stat_table(year: int, stat_type: str, internal_stat_type: str = None)
         if html_content:
             soup = BeautifulSoup(html_content, 'html.parser')
         else:
-            print(f"Warning: Could not fetch HTML for player ID extraction")
+            print("Warning: Could not fetch HTML for player ID extraction")
             soup = None
         
         # Find the stats table to extract player links
@@ -479,7 +479,7 @@ def scrape_stat_table(year: int, stat_type: str, internal_stat_type: str = None)
             table = None
         
         if not table:
-            print(f"Warning: Could not find table HTML for player ID extraction")
+            print("Warning: Could not find table HTML for player ID extraction")
             # Continue without player IDs - user can add them manually
             return df
         
@@ -859,7 +859,7 @@ def main():
             scrape_year(year)
             # Add delay between years (except after the last one)
             if i < len(valid_years) - 1:
-                print(f"\nWaiting 3 seconds before next year...")
+                print("\nWaiting 3 seconds before next year...")
                 time.sleep(3)
         except KeyboardInterrupt:
             print("\n\nScraping interrupted by user")
