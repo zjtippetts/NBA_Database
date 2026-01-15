@@ -720,8 +720,8 @@ def save_to_csv(df: pd.DataFrame, year: int, stat_type: str) -> bool:
         return False
     
     try:
-        # Create data/year folder structure if it doesn't exist
-        data_folder = 'data'
+        # Create nba_player_data/year folder structure if it doesn't exist
+        data_folder = 'nba_player_data'
         year_folder = os.path.join(data_folder, str(year))
         os.makedirs(year_folder, exist_ok=True)
         

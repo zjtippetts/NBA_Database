@@ -25,7 +25,7 @@ st.markdown("Explore NBA player statistics across multiple seasons and stat cate
 @st.cache_data
 def load_stat_file(stat_type):
     """Load a stat file from all_years folder."""
-    filepath = f"data/all_years/{stat_type}_all_years.csv"
+    filepath = f"nba_player_data/all_years/{stat_type}_all_years.csv"
     if os.path.exists(filepath):
         return pd.read_csv(filepath)
     return None

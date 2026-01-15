@@ -85,8 +85,8 @@ Enter year(s) to scrape (e.g., 2025 or 2024 2025):
 
 The script creates two types of output files:
 
-1. **Year-specific files**: Individual CSV files for each year in `data/YYYY/` folders
-2. **Combined files**: All years combined into single files in `data/all_years/` folder
+1. **Year-specific files**: Individual CSV files for each year in `nba_player_data/YYYY/` folders
+2. **Combined files**: All years combined into single files in `nba_player_data/all_years/` folder
 
 ```
 NBA_Code/
@@ -94,7 +94,7 @@ NBA_Code/
 ├── requirements.txt
 ├── README.md
 ├── venv/                    # Virtual environment (not tracked in git)
-└── data/                    # Data folder (created at runtime)
+└── nba_player_data/         # NBA player data folder (created at runtime)
     ├── all_years/           # Combined files (all years together)
     │   ├── totals_all_years.csv
     │   ├── per_game_all_years.csv
@@ -155,10 +155,10 @@ Output:
 ```
 Scraping NBA 2025 season stats...
 ==================================================
-Scraping totals... Saved data/2025/totals_2025.csv (735 rows)
-Updated data/all_years/totals_all_years.csv (1470 total rows)
-Scraping per_game... Saved data/2025/per_game_2025.csv (735 rows)
-Updated data/all_years/per_game_all_years.csv (1470 total rows)
+Scraping totals... Saved nba_player_data/2025/totals_2025.csv (735 rows)
+Updated nba_player_data/all_years/totals_all_years.csv (1470 total rows)
+Scraping per_game... Saved nba_player_data/2025/per_game_2025.csv (735 rows)
+Updated nba_player_data/all_years/per_game_all_years.csv (1470 total rows)
 ...
 ==================================================
 Completed: 8/8 stat types scraped successfully for 2025
